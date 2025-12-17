@@ -13,21 +13,28 @@ as your source of truth.
 panel](https://login.tailscale.com/admin) and copying down the name next to the
 Tailscale logo in the upper left hand corner of the page.
 
+### `oauth-client-id` and `audience`
+
+**Optional** The ID and audience for a [federated identity](https://tailscale.com/kb/1581/workload-identity-federation)
+for your tailnet. The federated identity must have the `policy_file` scope.
+
+Either `api-key`, `oauth-client-id` and `oauth-secret`, or `oauth-client-id` and `audience` are required.
+
 ### `api-key`
 
 **Optional** An API key authorized for your tailnet. You can get one [in the
 admin panel](https://login.tailscale.com/admin/settings/keys).
-Either `api-key` or `oauth-client-id` and `oauth-secret` are required.
+Either `api-key`, `oauth-client-id` and `oauth-secret`, or `oauth-client-id` and `audience` are required.
 
 Please note that API keys will expire in 90 days. Set up a monthly event to
-rotate your Tailscale API key, or use an OAuth client.
+rotate your Tailscale API key, or use a trust credential (OAuth client or federated identity).
 
 ### `oauth-client-id` and `oauth-secret`
 
 **Optional** The ID and secret for an [OAuth client](https://tailscale.com/kb/1215/oauth-clients)
-for your tailnet. The client must have the `acl` scope.
+for your tailnet. The client must have the `policy_file` scope.
 
-Either `api-key` or `oauth-client-id` and `oauth-secret` are required.
+Either `api-key`, `oauth-client-id` and `oauth-secret`, or `oauth-client-id` and `audience` are required.
 
 ### `policy-file`
 
@@ -63,13 +70,16 @@ on:
 
 jobs:
   acls:
+    permissions:
+      contents: read
+      id-token: write # This is required for the Tailscale action to request a JWT from GitHub
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Fetch version-cache.json
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ./version-cache.json
           key: version-cache.json-${{ github.run_id }}
@@ -81,7 +91,8 @@ jobs:
         id: deploy-acl
         uses: tailscale/gitops-acl-action@v1
         with:
-          api-key: ${{ secrets.TS_API_KEY }}
+          oauth-client-id: ${{ secrets.TS_OAUTH_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
           tailnet: ${{ secrets.TS_TAILNET }}
           action: apply
 
@@ -90,23 +101,20 @@ jobs:
         id: test-acl
         uses: tailscale/gitops-acl-action@v1
         with:
-          api-key: ${{ secrets.TS_API_KEY }}
+          oauth-client-id: ${{ secrets.TS_OAUTH_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
           tailnet: ${{ secrets.TS_TAILNET }}
           action: test
 ```
 
-Generate a new API key [here](https://login.tailscale.com/admin/settings/keys).
-
-Set a monthly calendar reminder to renew this key because Tailscale does not
-currently support API key renewal (this will be updated to support that when
-that feature is implemented).
+Generate a new federated identity. See [here](https://login.tailscale.com/admin/settings/keys) for instructions.
 
 Then open the secrets settings for your repo and add two secrets:
 
-* `TS_API_KEY`: Your Tailscale API key from the earlier step
+* `TS_OAUTH_ID`: Your federated identity's client ID
+* `TS_AUDIENCE`: Your federated identity's audience
 * `TS_TAILNET`: Your tailnet's name (it's next to the logo on the upper
-  left-hand corner of the [admin
-  panel](https://login.tailscale.com/admin/machines))
+  left-hand corner of the [admin panel](https://login.tailscale.com/admin/machines))
 
 Once you do that, commit the changes and push them to GitHub. You will have CI
 automatically test and push changes to your tailnet policy file to Tailscale.
