@@ -40,7 +40,7 @@ runs:
         exit 1
     - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
       with:
-        go-version: 1.25.5
+        go-version: 1.25.6
         cache: false
     - name: Fetch ID token
       if: ${{ inputs['oauth-client-id'] != '' && inputs['audience'] != '' }}
@@ -61,5 +61,5 @@ runs:
         TS_ID_TOKEN: "${{ steps.fetch-id-token.outputs.id_token }}"
         TS_API_KEY: "${{ inputs.api-key }}"
         TS_TAILNET: "${{ inputs.tailnet }}"
-      run: go run tailscale.com/cmd/gitops-pusher@4c37141ab780dbf6c037bd64fe48ab330441ad06 "--policy-file=${{ inputs.policy-file }}" "${{ inputs.action }}"
+      run: go run tailscale.com/cmd/gitops-pusher@b4d39e2fd92538384aa7388fdbeda0ec51973bfc "--policy-file=${{ inputs.policy-file }}" "${{ inputs.action }}"
 
