@@ -1,5 +1,9 @@
-name: "Sync Tailscale ACLs"
+name: "Tailscale GitOps ACL Sync"
 description: "Push changes to Tailscale ACLs and run ACL tests in CI (pre-compiled for speed)"
+
+branding:
+  icon: "shield"
+  color: "blue"
 
 inputs:
   tailnet:
