@@ -1,134 +1,85 @@
-# GitHub Action to Sync Tailscale ACLs
+# Tailscale GitOps Action
 
-This GitHub action lets you manage your [tailnet policy file](https://tailscale.com/kb/1018/acls/) using a
-[GitOps](https://about.gitlab.com/topics/gitops/) workflow. With this GitHub
-action you can automatically manage your tailnet policy file using a git repository
-as your source of truth. 
+A GitHub Action to manage your [Tailscale ACL policy](https://tailscale.com/kb/1018/acls) using a GitOps workflow. This is a drop-in replacement for [`tailscale/gitops-acl-action`](https://github.com/tailscale/gitops-acl-action) that caches a pre-compiled `gitops-pusher` binary instead of compiling it from source on every run, reducing execution time from 60–90 seconds to **2–3 seconds**.
 
-## Inputs
-
-### `tailnet`
-
-**Required** The name of your tailnet. You can find it by opening [the admin
-panel](https://login.tailscale.com/admin) and copying down the name next to the
-Tailscale logo in the upper left hand corner of the page.
-
-### `oauth-client-id` and `audience`
-
-**Optional** The ID and audience for a [federated identity](https://tailscale.com/kb/1581/workload-identity-federation)
-for your tailnet. The federated identity must have the `policy_file` scope.
-
-Either `api-key`, `oauth-client-id` and `oauth-secret`, or `oauth-client-id` and `audience` are required.
-
-### `api-key`
-
-**Optional** An API key authorized for your tailnet. You can get one [in the
-admin panel](https://login.tailscale.com/admin/settings/keys).
-Either `api-key`, `oauth-client-id` and `oauth-secret`, or `oauth-client-id` and `audience` are required.
-
-Please note that API keys will expire in 90 days. Set up a monthly event to
-rotate your Tailscale API key, or use a trust credential (OAuth client or federated identity).
-
-### `oauth-client-id` and `oauth-secret`
-
-**Optional** The ID and secret for an [OAuth client](https://tailscale.com/kb/1215/oauth-clients)
-for your tailnet. The client must have the `policy_file` scope.
-
-Either `api-key`, `oauth-client-id` and `oauth-secret`, or `oauth-client-id` and `audience` are required.
-
-### `policy-file`
-
-**Optional** The path to your policy file in the repository. If not set this
-defaults to `policy.hujson` in the root of your repository.
-
-### `action`
-
-**Required** One of `test` or `apply`. If you set `test`, the action will run
-ACL tests and not update the ACLs in Tailscale. If you set `apply`, the action
-will run ACL tests and then update the ACLs in Tailscale. This enables you to
-use pull requests to make changes with CI stopping you from pushing a bad change
-out to production.
-
-## Getting Started
-
-Set up a new GitHub repository that will contain your tailnet policy file. Open the [Access Controls page of the admin console](https://login.tailscale.com/admin/acls) and copy your policy file to
-a file in that repo called `policy.hujson`.
-
-If you want to change this name to something else, you will need to add the
-`policy-file` argument to the `with` blocks in your GitHub Actions config.
-
-Copy this file to `.github/workflows/tailscale.yml`.
+## Usage
 
 ```yaml
 name: Sync Tailscale ACLs
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   acls:
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # This is required for the Tailscale action to request a JWT from GitHub
-    runs-on: ubuntu-latest
+      id-token: write
 
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Fetch version-cache.json
-        uses: actions/cache@v5
-        with:
-          path: ./version-cache.json
-          key: version-cache.json-${{ github.run_id }}
-          restore-keys: |
-            version-cache.json-
+      - uses: actions/checkout@v4
 
       - name: Deploy ACL
         if: github.event_name == 'push'
-        id: deploy-acl
-        uses: tailscale/gitops-acl-action@v1
+        uses: matchory/tailscale-gitops-action@v1
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_ID }}
           audience: ${{ secrets.TS_AUDIENCE }}
           tailnet: ${{ secrets.TS_TAILNET }}
+          policy-file: ./policy.hujson
           action: apply
 
       - name: Test ACL
         if: github.event_name == 'pull_request'
-        id: test-acl
-        uses: tailscale/gitops-acl-action@v1
+        uses: matchory/tailscale-gitops-action@v1
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_ID }}
           audience: ${{ secrets.TS_AUDIENCE }}
           tailnet: ${{ secrets.TS_TAILNET }}
+          policy-file: ./policy.hujson
           action: test
 ```
 
-Generate a new federated identity. See [here](https://login.tailscale.com/admin/settings/keys) for instructions.
+## Inputs
 
-Then open the secrets settings for your repo and add two secrets:
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `tailnet` | Yes | — | Your tailnet name (e.g. `example.com`, `your-org.github`) |
+| `api-key` | No | — | Tailscale API key (expires every 90 days) |
+| `oauth-client-id` | No | — | OAuth or OIDC Federated Identity Client ID |
+| `oauth-secret` | No | — | OAuth Client Secret |
+| `audience` | No | — | OIDC Federated Identity Audience |
+| `policy-file` | Yes | `./policy.hujson` | Path to your policy file in the repository |
+| `action` | Yes | — | `test` (validate only) or `apply` (validate and push) |
+| `tailscale-release` | No | `b4d39e...` | Tailscale commit hash to build `gitops-pusher` from |
 
-* `TS_OAUTH_ID`: Your federated identity's client ID
-* `TS_AUDIENCE`: Your federated identity's audience
-* `TS_TAILNET`: Your tailnet's name (it's next to the logo on the upper
-  left-hand corner of the [admin panel](https://login.tailscale.com/admin/machines))
+### Authentication
 
-Once you do that, commit the changes and push them to GitHub. You will have CI
-automatically test and push changes to your tailnet policy file to Tailscale.
+Exactly **one** of the following authentication methods must be provided:
 
-## Developer guide
+1. **API Key** — set `api-key` (note: keys expire after 90 days)
+2. **OAuth Client** — set `oauth-client-id` and `oauth-secret`
+3. **OIDC Federated Identity** — set `oauth-client-id` and `audience` (requires `id-token: write` permission)
 
-### Release process
+## How It Works
 
-To create a new minor or patch release:
+The action compiles Tailscale's [`gitops-pusher`](https://pkg.go.dev/tailscale.com/cmd/gitops-pusher) as a static binary on the first run and caches it using [`actions/cache`](https://github.com/actions/cache). The cache key includes the runner OS, architecture, and the pinned Tailscale commit hash, so subsequent runs skip compilation entirely and restore the binary from cache.
 
-- push the new tag to the main branch
+| Run | What happens | Time |
+|-----|-------------|------|
+| First (cold cache) | Installs Go, compiles binary, caches it | ~25s |
+| Subsequent (warm cache) | Restores binary from cache, executes it | ~2–3s |
 
-- create a new GitHub release with a description of the changes in this release
+When using OIDC federated identity, the action fetches an ID token from GitHub's OIDC provider before invoking the binary.
 
-- repush the latest major release tag to point at the new latest release.
-For example, if you are creating a `v1.3.1` release, you want to additionally tag it with `v1` tag.
-This approach follows the [official GitHub actions versioning guidelines](https://docs.github.com/en/actions/creating-actions/about-custom-actions#using-tags-for-release-management).
+### Updating the Tailscale version
+
+The `tailscale-release` input controls which commit of `gitops-pusher` is compiled. Changing this value (either in this action's default or as an input in your workflow) automatically invalidates the cache and triggers a one-time recompilation.
+
+## License
+
+MIT
